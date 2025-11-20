@@ -1,0 +1,202 @@
+
+# ----------------------------------------
+# 1. Namespace
+# ----------------------------------------
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ingress-nginx
+
+---
+
+# ----------------------------------------
+# 2. ServiceAccount, ClusterRole, ClusterRoleBinding
+# ----------------------------------------
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ingress-nginx
+  namespace: ingress-nginx
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: ingress-nginx
+rules:
+  - apiGroups: [""]
+    resources:
+      - configmaps
+      - endpoints
+      - nodes
+      - pods
+      - secrets
+    verbs:
+      - list
+      - watch
+  - apiGroups: [""]
+    resources:
+      - nodes
+    verbs:
+      - get
+  - apiGroups: ["networking.k8s.io"]
+    resources:
+      - ingresses
+      - ingressclasses
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups: [""]
+    resources:
+      - events
+    verbs:
+      - create
+      - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: ingress-nginx
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: ingress-nginx
+subjects:
+  - kind: ServiceAccount
+    name: ingress-nginx
+    namespace: ingress-nginx
+
+---
+
+# ----------------------------------------
+# 3. ConfigMap (optional)
+# ----------------------------------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ingress-nginx-controller
+  namespace: ingress-nginx
+data:
+  enable-vts-status: "true"
+
+---
+
+# ----------------------------------------
+# 4. NGINX Ingress Controller Deployment
+# ----------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ingress-nginx-controller
+  namespace: ingress-nginx
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ingress-nginx
+      app.kubernetes.io/instance: ingress-nginx
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ingress-nginx
+        app.kubernetes.io/instance: ingress-nginx
+    spec:
+      serviceAccountName: ingress-nginx
+      containers:
+        - name: controller
+          image: registry.k8s.io/ingress-nginx/controller:v1.14.0
+          args:
+            - /nginx-ingress-controller
+            - --configmap=$(POD_NAMESPACE)/ingress-nginx-controller
+            - --ingress-class=nginx
+            - --controller-class=k8s.io/ingress-nginx
+
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          ports:
+            - name: http
+              containerPort: 80
+            - name: https
+              containerPort: 443
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 10254
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 10254
+            initialDelaySeconds: 10
+            periodSeconds: 10
+
+---
+
+# ----------------------------------------
+# 5. NGINX Ingress Controller Service
+# ----------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: ingress-nginx-controller
+  namespace: ingress-nginx
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/instance: ingress-nginx
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+      nodePort: 30080
+    - name: https
+      port: 443
+      targetPort: 443
+      nodePort: 30443
+
+---
+
+# ----------------------------------------
+# 6. Ingress Resource for Your Java Services
+# ----------------------------------------
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: java-services-ingress
+  namespace: default
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+spec:
+  rules:
+    - http:
+        paths:
+          - path: /shopfront
+            pathType: Prefix
+            backend:
+              service:
+                name: shopfront-service
+                port:
+                  number: 8080
+          - path: /productcatalogue
+            pathType: Prefix
+            backend:
+              service:
+                name: productcatalogue-service
+                port:
+                  number: 8080
+          - path: /stockmanager
+            pathType: Prefix
+            backend:
+              service:
+                name: stockmanager-service
+                port:
+                  number: 8080

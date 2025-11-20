@@ -1,0 +1,35 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: java-services-ingress
+  namespace: default
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  ingressClassName: nginx
+  rules:
+    - http:
+        paths:
+          - path: /shopfront
+            pathType: Prefix
+            backend:
+              service:
+                name: shopfront
+                port:
+                  number: 8010
+
+          - path: /productcatalogue
+            pathType: Prefix
+            backend:
+              service:
+                name: productcatalogue
+                port:
+                  number: 8020
+
+          - path: /stockmanager
+            pathType: Prefix
+            backend:
+              service:
+                name: stockmanager
+                port:
+                  number: 8030
